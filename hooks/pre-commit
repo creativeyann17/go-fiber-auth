@@ -1,5 +1,8 @@
 #!/bin/sh
+# Format + vet + tests (no race) before every commit — the full
+# race-detector check runs in CI, not here. Install with `make install-hooks`.
 set -e
 make fmt
 git add -u
-make check
+go vet ./...
+go test ./... -count=1
