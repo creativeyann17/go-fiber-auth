@@ -3,6 +3,7 @@ package fiberauth
 import (
 	"crypto/subtle"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -96,6 +97,31 @@ func CheckRefresh(s RefreshSession, plain string, currentVer int64, grace time.D
 	return RefreshReuse
 }
 
+// RefreshSessionsToEvict returns the ids to delete before creating a new
+// session so a user keeps at most max sessions including the new one:
+// every expired session, then the least recently used live ones.
+// max <= 0 means no cap.
+func RefreshSessionsToEvict(sessions []RefreshSession, max int) []string {
+	now := time.Now()
+	var ids []string
+	var live []RefreshSession
+	for _, s := range sessions {
+		if now.Before(s.ExpiresAt) {
+			live = append(live, s)
+		} else {
+			ids = append(ids, s.ID)
+		}
+	}
+	if max <= 0 || len(live) < max {
+		return ids
+	}
+	slices.SortFunc(live, func(a, b RefreshSession) int { return b.RotatedAt.Compare(a.RotatedAt) })
+	for _, s := range live[max-1:] {
+		ids = append(ids, s.ID)
+	}
+	return ids
+}
+
 // SplitRefreshCookie parses an "id:plainToken" cookie value.
 func SplitRefreshCookie(v string) (id, plain string, ok bool) {
 	id, plain, ok = strings.Cut(v, ":")
@@ -107,7 +133,8 @@ func SplitRefreshCookie(v string) (id, plain string, ok bool) {
 
 // RefreshCookie builds the refresh cookie. path should be the refresh
 // endpoint so the cookie never rides normal API calls. HTTPOnly keeps
-// it from JS, SameSite=Strict blocks cross-site (CSRF) refreshes.
+// it from JS, SameSite=Strict blocks cross-site (CSRF) refreshes, Secure
+// keeps it off plain http (browsers still allow it on http://localhost).
 func RefreshCookie(name, path, id, plain string, ttl time.Duration) *fiber.Cookie {
 	return &fiber.Cookie{
 		Name:     name,
@@ -115,6 +142,7 @@ func RefreshCookie(name, path, id, plain string, ttl time.Duration) *fiber.Cooki
 		MaxAge:   int(ttl.Seconds()),
 		HTTPOnly: true,
 		SameSite: "Strict",
+		Secure:   true,
 		Path:     path,
 	}
 }
@@ -128,6 +156,7 @@ func ExpiredRefreshCookie(name, path string) *fiber.Cookie {
 		MaxAge:   -1,
 		HTTPOnly: true,
 		SameSite: "Strict",
+		Secure:   true,
 		Path:     path,
 	}
 }

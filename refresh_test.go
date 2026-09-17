@@ -1,6 +1,7 @@
 package fiberauth
 
 import (
+	"slices"
 	"testing"
 	"time"
 )
@@ -72,11 +73,42 @@ func TestSplitRefreshCookie(t *testing.T) {
 
 func TestRefreshCookie(t *testing.T) {
 	c := RefreshCookie("rt", "/api/auth/refresh", "id", "tok", time.Hour)
-	if c.Value != "id:tok" || !c.HTTPOnly || c.SameSite != "Strict" || c.Path != "/api/auth/refresh" || c.MaxAge != 3600 {
+	if c.Value != "id:tok" || !c.HTTPOnly || !c.Secure || c.SameSite != "Strict" || c.Path != "/api/auth/refresh" || c.MaxAge != 3600 {
 		t.Fatalf("bad cookie: %+v", c)
 	}
 	e := ExpiredRefreshCookie("rt", "/api/auth/refresh")
-	if e.Name != c.Name || e.Path != c.Path || !e.HTTPOnly || e.SameSite != "Strict" || e.MaxAge != -1 {
+	if e.Name != c.Name || e.Path != c.Path || !e.HTTPOnly || !e.Secure || e.SameSite != "Strict" || e.MaxAge != -1 {
 		t.Fatalf("expired cookie attributes mismatch: %+v", e)
+	}
+}
+
+func TestRefreshSessionsToEvict(t *testing.T) {
+	now := time.Now()
+	sess := func(id string, usedAgo time.Duration, expired bool) RefreshSession {
+		exp := now.Add(time.Hour)
+		if expired {
+			exp = now.Add(-time.Second)
+		}
+		return RefreshSession{ID: id, RotatedAt: now.Add(-usedAgo), ExpiresAt: exp}
+	}
+	all := []RefreshSession{
+		sess("old", 3*time.Hour, false),
+		sess("dead", time.Minute, true),
+		sess("new", time.Minute, false),
+		sess("mid", 2*time.Hour, false),
+	}
+	cases := []struct {
+		max  int
+		want []string
+	}{
+		{0, []string{"dead"}},                      // no cap: expired only
+		{4, []string{"dead"}},                      // 3 live + new = 4
+		{3, []string{"dead", "old"}},               // keep 2 most recent
+		{1, []string{"dead", "new", "mid", "old"}}, // new session will be the only one
+	}
+	for _, tc := range cases {
+		if got := RefreshSessionsToEvict(slices.Clone(all), tc.max); !slices.Equal(got, tc.want) {
+			t.Errorf("max=%d: got %v want %v", tc.max, got, tc.want)
+		}
 	}
 }

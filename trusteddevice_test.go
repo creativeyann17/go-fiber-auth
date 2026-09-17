@@ -3,6 +3,8 @@ package fiberauth
 import (
 	"testing"
 	"time"
+
+	"github.com/gofiber/fiber/v2"
 )
 
 func testDevice(t *testing.T, ttl time.Duration) (TrustedDevice, string) {
@@ -75,5 +77,15 @@ func TestDeviceCookieRoundTrip(t *testing.T) {
 	dead := ExpiredDeviceCookie("app_device")
 	if dead.MaxAge != -1 || dead.Value != "" || dead.Path != ck.Path || dead.SameSite != ck.SameSite {
 		t.Fatalf("expiry cookie must match original attributes: %+v", dead)
+	}
+}
+
+func TestDeviceCookieAttributes(t *testing.T) {
+	c := DeviceCookie("dev", "id", "tok", time.Hour)
+	e := ExpiredDeviceCookie("dev")
+	for _, ck := range []*fiber.Cookie{c, e} {
+		if !ck.HTTPOnly || !ck.Secure || ck.SameSite != "Strict" || ck.Path != "/" {
+			t.Fatalf("bad device cookie attributes: %+v", ck)
+		}
 	}
 }

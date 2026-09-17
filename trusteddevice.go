@@ -89,8 +89,8 @@ func CookieDeviceID(cookieValue string) string {
 }
 
 // DeviceCookie builds the trusted-device cookie for a freshly minted
-// token. HTTPOnly + SameSite=Strict: the token never reaches JS and
-// never rides a cross-site request.
+// token. HTTPOnly + SameSite=Strict + Secure: the token never reaches JS,
+// never rides a cross-site request and never goes over plain http.
 func DeviceCookie(name, id, plain string, ttl time.Duration) *fiber.Cookie {
 	return &fiber.Cookie{
 		Name:     name,
@@ -98,6 +98,7 @@ func DeviceCookie(name, id, plain string, ttl time.Duration) *fiber.Cookie {
 		MaxAge:   int(ttl.Seconds()),
 		HTTPOnly: true,
 		SameSite: "Strict",
+		Secure:   true,
 		Path:     "/",
 	}
 }
@@ -112,6 +113,7 @@ func ExpiredDeviceCookie(name string) *fiber.Cookie {
 		MaxAge:   -1,
 		HTTPOnly: true,
 		SameSite: "Strict",
+		Secure:   true,
 		Path:     "/",
 	}
 }

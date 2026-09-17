@@ -92,6 +92,10 @@ invalidates every outstanding token for that user.
 
 ### Refresh tokens (optional)
 
+Cookies (refresh and trusted-device) are `HttpOnly`, `SameSite=Strict` and
+`Secure`: served over plain http they are dropped by browsers, except on
+`http://localhost`.
+
 Skip this entirely if one long-lived access token is enough. Opt in to get
 short access tokens plus a rotating refresh cookie: a redeploy (`bootTime`)
 or an expired access token is silently recovered, and role changes land
@@ -101,6 +105,10 @@ within one access TTL.
 const rtCookie, rtPath = "app_rt", "/api/auth/refresh"
 
 // Login (after password + TOTP):
+// Cap sessions per user: drops expired + least recently used.
+for _, id := range fiberauth.RefreshSessionsToEvict(store.RefreshByUID(user.ID), 10) {
+    store.DeleteRefresh(id)
+}
 sess, plain, _ := fiberauth.NewRefreshSession(user.ID, user.TokenVersion, ua, 30*24*time.Hour)
 store.InsertRefresh(sess)
 c.Cookie(fiberauth.RefreshCookie(rtCookie, rtPath, sess.ID, plain, 30*24*time.Hour))
