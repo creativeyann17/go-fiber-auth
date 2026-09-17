@@ -6,9 +6,9 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"uuid"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 )
 
 // RefreshSession is an optional long-lived session that mints short

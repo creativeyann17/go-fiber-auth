@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"uuid"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/google/uuid"
 )
 
 // TrustedDevice is a "remember this device" record letting a browser
