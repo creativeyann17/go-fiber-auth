@@ -1,6 +1,6 @@
 // Package fiberauth provides the shared auth building blocks used by
 // creativeyann17's Fiber apps: JWT sessions with TokenVersion revocation,
-// login throttling, TOTP 2FA, trusted devices, single-use tickets,
+// optional rotating refresh tokens, login throttling, TOTP 2FA, trusted devices, single-use tickets,
 // 6-digit email codes, and a Resend mail client. Storage-agnostic: every
 // piece that touches a user record takes closures or plain data.
 package fiberauth

@@ -7,7 +7,8 @@
 [![License](https://img.shields.io/github/license/creativeyann17/go-fiber-auth)](LICENSE)
 
 Shared auth building blocks for [Fiber](https://github.com/gofiber/fiber) apps:
-JWT sessions with token-version revocation, login throttling, TOTP 2FA,
+JWT sessions with token-version revocation, optional rotating refresh tokens,
+login throttling, TOTP 2FA,
 trusted devices, single-use tickets, 6-digit email codes, and a Resend mail
 client.
 
@@ -30,6 +31,7 @@ import fiberauth "github.com/creativeyann17/go-fiber-auth"
 | File | What it gives you |
 |---|---|
 | `jwt.go` | HS256 session tokens (`Claims` with `UID`, `Roles`, `Ver`, `Purpose`), bcrypt password hashing, timing-attack `DummyVerify` |
+| `refresh.go` | Optional rotating refresh tokens (`RefreshSession`): SHA-256 stored, reuse detection, grace window, TokenVersion revocation |
 | `throttle.go` | Keyed in-memory lockout (`Throttle`) + two-dimension login throttle (`LoginThrottle`: per-account and per-IP) |
 | `middleware.go` | `AuthMiddleware`, `AdminOnly`, `TokenVersionMiddleware`, context accessors, `ClientIP` |
 | `otp.go` | TOTP secret enrollment, code validation, bcrypt-hashed one-time backup codes |
@@ -87,6 +89,52 @@ admin := api.Group("/admin", fiberauth.AdminOnly)
 
 Bumping the stored `TokenVersion` (logout-all, password reset, ban) instantly
 invalidates every outstanding token for that user.
+
+### Refresh tokens (optional)
+
+Skip this entirely if one long-lived access token is enough. Opt in to get
+short access tokens plus a rotating refresh cookie: a redeploy (`bootTime`)
+or an expired access token is silently recovered, and role changes land
+within one access TTL.
+
+```go
+const rtCookie, rtPath = "app_rt", "/api/auth/refresh"
+
+// Login (after password + TOTP):
+sess, plain, _ := fiberauth.NewRefreshSession(user.ID, user.TokenVersion, ua, 30*24*time.Hour)
+store.InsertRefresh(sess)
+c.Cookie(fiberauth.RefreshCookie(rtCookie, rtPath, sess.ID, plain, 30*24*time.Hour))
+tok, _ := fiberauth.Issue(secret, user.ID, user.Roles, user.TokenVersion, 15*time.Minute)
+
+// POST /api/auth/refresh (no AuthMiddleware):
+id, plain, ok := fiberauth.SplitRefreshCookie(c.Cookies(rtCookie))
+sess, found := store.GetRefresh(id)
+if !ok || !found {
+    return fiber.ErrUnauthorized
+}
+user := store.GetByID(sess.UID) // fresh roles + TokenVersion
+switch fiberauth.CheckRefresh(sess, plain, user.TokenVersion, 10*time.Second) {
+case fiberauth.RefreshOK:
+    next, newPlain, _ := fiberauth.RotateRefreshSession(sess)
+    // compare-and-swap: UPDATE ... WHERE id=$1 AND hashed_token=$old
+    if store.SwapRefresh(next, sess.HashedToken) {
+        c.Cookie(fiberauth.RefreshCookie(rtCookie, rtPath, next.ID, newPlain, time.Until(next.ExpiresAt)))
+    } // lost the race: another tab rotated, treat as grace
+case fiberauth.RefreshGrace:
+    // concurrent tab already rotated, browser holds the new cookie
+case fiberauth.RefreshReuse:
+    log.Warn("refresh token reuse", "uid", sess.UID) // likely stolen
+    fallthrough
+default: // RefreshExpired, RefreshRevoked
+    store.DeleteRefresh(id)
+    c.Cookie(fiberauth.ExpiredRefreshCookie(rtCookie, rtPath))
+    return fiber.ErrUnauthorized
+}
+tok, _ := fiberauth.Issue(secret, user.ID, user.Roles, user.TokenVersion, 15*time.Minute)
+
+// Logout: store.DeleteRefresh(id) + ExpiredRefreshCookie.
+// Logout-all: user.TokenVersion++ already revokes every refresh session.
+```
 
 ### Login throttling
 

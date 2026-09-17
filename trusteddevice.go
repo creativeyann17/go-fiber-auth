@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
+	"fmt"
 	"strings"
 	"time"
 
@@ -26,15 +27,26 @@ type TrustedDevice struct {
 // NewTrustedDeviceToken mints a device id plus its secret token. plain
 // goes in the cookie (via DeviceCookie), hashed in the stored record.
 func NewTrustedDeviceToken() (id, plain, hashed string, err error) {
-	id = uuid.New().String()
-	b := make([]byte, 32)
-	if _, err = rand.Read(b); err != nil {
-		return "", "", "", err
+	plain, err = randomHex(32)
+	if err != nil {
+		return "", "", "", fmt.Errorf("generate device token: %w", err)
 	}
-	plain = hex.EncodeToString(b)
+	return uuid.New().String(), plain, hashToken(plain), nil
+}
+
+// randomHex returns n crypto-random bytes, hex-encoded.
+func randomHex(n int) (string, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+// hashToken returns the hex SHA-256 of a plain token, the stored form.
+func hashToken(plain string) string {
 	h := sha256.Sum256([]byte(plain))
-	hashed = hex.EncodeToString(h[:])
-	return id, plain, hashed, nil
+	return hex.EncodeToString(h[:])
 }
 
 // ValidateDeviceCookie checks a cookie value against the stored devices:
@@ -45,8 +57,7 @@ func ValidateDeviceCookie(cookieValue string, devices []TrustedDevice) (deviceID
 		return "", false
 	}
 	id, plain := parts[0], parts[1]
-	h := sha256.Sum256([]byte(plain))
-	hashed := hex.EncodeToString(h[:])
+	hashed := hashToken(plain)
 	now := time.Now()
 	for _, d := range devices {
 		if d.ID == id && subtle.ConstantTimeCompare([]byte(d.HashedToken), []byte(hashed)) == 1 && now.Before(d.ExpiresAt) {

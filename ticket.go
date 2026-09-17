@@ -1,8 +1,7 @@
 package fiberauth
 
 import (
-	"crypto/rand"
-	"encoding/hex"
+	"fmt"
 	"sync"
 	"time"
 )
@@ -36,11 +35,10 @@ func NewTicketStore(ttl time.Duration) *TicketStore {
 // Issue mints a ticket bound to uid+scope. The window is short because
 // the client navigates to the target URL immediately after minting.
 func (d *TicketStore) Issue(uid, scope string) (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
+	tok, err := randomHex(32)
+	if err != nil {
+		return "", fmt.Errorf("generate ticket: %w", err)
 	}
-	tok := hex.EncodeToString(b)
 	now := time.Now()
 	d.mu.Lock()
 	defer d.mu.Unlock()
