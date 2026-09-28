@@ -107,10 +107,12 @@ func DeviceCookie(name, id, plain string, ttl time.Duration) *fiber.Cookie {
 // cookie immediately. Attributes must match DeviceCookie's so the
 // browser targets the same cookie.
 func ExpiredDeviceCookie(name string) *fiber.Cookie {
+	// fasthttp writes Max-Age only when > 0: the past Expires is what deletes it.
 	return &fiber.Cookie{
 		Name:     name,
 		Value:    "",
 		MaxAge:   -1,
+		Expires:  time.Unix(0, 0),
 		HTTPOnly: true,
 		SameSite: "Strict",
 		Secure:   true,

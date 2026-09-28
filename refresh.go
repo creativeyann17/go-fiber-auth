@@ -150,10 +150,12 @@ func RefreshCookie(name, path, id, plain string, ttl time.Duration) *fiber.Cooki
 // ExpiredRefreshCookie tells the browser to drop the refresh cookie.
 // name and path must match RefreshCookie's.
 func ExpiredRefreshCookie(name, path string) *fiber.Cookie {
+	// fasthttp writes Max-Age only when > 0: the past Expires is what deletes it.
 	return &fiber.Cookie{
 		Name:     name,
 		Value:    "",
 		MaxAge:   -1,
+		Expires:  time.Unix(0, 0),
 		HTTPOnly: true,
 		SameSite: "Strict",
 		Secure:   true,
