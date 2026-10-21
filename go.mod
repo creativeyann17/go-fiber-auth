@@ -1,6 +1,6 @@
 module github.com/creativeyann17/go-fiber-auth
 
-go 1.27.1
+go 1.27.3
 
 require (
 	github.com/gofiber/fiber/v2 v2.52.14
